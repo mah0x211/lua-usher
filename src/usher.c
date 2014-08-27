@@ -63,17 +63,9 @@ typedef struct {
 typedef struct {
     lua_State *L;
     int type;
-    void *data;
+    int64_t data;
 } lusher_udata_t;
 
-
-#define newudata(L,t,fn,idx) ({ \
-    void *data = palloc( t ); \
-    if( data ){ \
-        *(t*)data = fn( L, idx ); \
-    } \
-    data; \
-})
 
 static int set_lua( lua_State *L )
 {
@@ -94,16 +86,18 @@ static int set_lua( lua_State *L )
     }
     else if( ( udata = palloc( lusher_udata_t ) ) )
     {
+        usher_error_t err;
+        
         // check type
         udata->type = lua_type( L, 3 );
         switch( udata->type )
         {
             // should copy data
             case LUA_TNUMBER:
-                udata->data = newudata( L, lua_Number, lua_tonumber, 3 );
+                udata->data = (int64_t)lua_tonumber( L, 3 );
             break;
             case LUA_TBOOLEAN:
-                udata->data = newudata( L, int, lua_toboolean, 3 );
+                udata->data = (int)lua_toboolean( L, 3 );
             break;
             
             // should retain reference
@@ -113,27 +107,18 @@ static int set_lua( lua_State *L )
             case LUA_TUSERDATA:
             case LUA_TTHREAD:
             case LUA_TLIGHTUSERDATA:
-                udata->data = newudata( L, int, lstate_ref, 3 );
+                udata->data = (int)lstate_ref( L, 3 );
             break;
         }
         
-        if( udata->data )
-        {
-            usher_error_t err = usher_replace( u->usher, key, (void*)udata );
-            
-            if( err == USHER_OK ){
-                udata->L = L;
-                return 0;
-            }
-            
-            // got error
-            lua_pushstring( L, usher_strerror( err ) );
-            pdealloc( udata->data );
+        err = usher_replace( u->usher, key, (void*)udata );
+        if( err == USHER_OK ){
+            udata->L = L;
+            return 0;
         }
-        // no-mem
-        else {
-            lua_pushstring( L, strerror( errno ) );
-        }
+        
+        // got error
+        lua_pushstring( L, usher_strerror( err ) );
         pdealloc( udata );
     }
     // no-mem
@@ -152,10 +137,10 @@ static inline void push_udata( lua_State *L, lusher_udata_t *udata )
     {
         // copied data
         case LUA_TNUMBER:
-            lua_pushnumber( L, *((lua_Number*)udata->data) );
+            lua_pushnumber( L, (lua_Number)udata->data );
         break;
         case LUA_TBOOLEAN:
-            lua_pushboolean( L, *(int*)udata->data );
+            lua_pushboolean( L, (int)udata->data );
         break;
         
         // referenced data
@@ -165,7 +150,7 @@ static inline void push_udata( lua_State *L, lusher_udata_t *udata )
         case LUA_TUSERDATA:
         case LUA_TTHREAD:
         case LUA_TLIGHTUSERDATA:
-            lstate_pushref( L, *(int*)udata->data );
+            lstate_pushref( L, (int)udata->data );
         break;
         
         // ignore nil or none value
@@ -268,10 +253,9 @@ static void udata_dealloc_cb( void *data )
             case LUA_TUSERDATA:
             case LUA_TTHREAD:
             case LUA_TLIGHTUSERDATA:
-                lstate_unref( udata->L, *(int*)udata->data );
+                lstate_unref( udata->L, (int)udata->data );
             break;
         }
-        pdealloc( udata->data );
     }
     pdealloc( data );
 }
