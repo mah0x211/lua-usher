@@ -1,0 +1,3 @@
+[submodule "deps/libusher"]
+	path = deps/libusher
+	url = https://github.com/mah0x211/libusher.git
