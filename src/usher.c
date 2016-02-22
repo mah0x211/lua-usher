@@ -185,33 +185,56 @@ static int exec_lua( lua_State *L )
     const char *key = luaL_checklstring( L, 2, &len );
     usher_glob_t glob;
     usher_error_t err = usher_exec( u->usher, key, &glob );
-    
-    if( err == USHER_OK && glob.seg->type & USHER_SEG_EOS )
-    {
-        lusher_udata_t *udata = (lusher_udata_t*)glob.seg->udata;
-        
-        push_udata( L, udata );
-        if( glob.nitems )
-        {
-            size_t i = 0;
-            
-            // push glob data
-            lua_createtable( L, 0, glob.nitems );
-            for(; i < glob.nitems; i++ ){
-                lua_pushstring( L, (char*)glob.items[i].name );
-                lua_pushlstring( L, (char*)glob.items[i].head,
-                                 glob.items[i].tail - glob.items[i].head );
-                lua_rawset(L,-3);
-            }
-            usher_glob_dealloc( &glob );
-            
-            return 2;
-        }
-        
-        return 1;
+
+    // got mem-error
+    if( err == USHER_ENOMEM ){
+        lua_pushnil( L );
+        lua_pushnil( L );
+        lua_pushstring( L, usher_strerror( err ) );
+        return 3;
     }
-    
-    return 0;
+    // found eos
+    else if( err == USHER_OK && glob.seg->type & USHER_SEG_EOS ){
+        push_udata( L, (lusher_udata_t*)glob.seg->udata );
+        // eliminate a glob.eos
+        glob.eos = NULL;
+    }
+    else {
+        lua_pushnil( L );
+    }
+
+    // push glob items
+    if( glob.nitems )
+    {
+        size_t i = 0;
+        
+        lua_createtable( L, 0, glob.nitems );
+        for(; i < glob.nitems; i++ ){
+            lua_pushstring( L, (char*)glob.items[i].name );
+            lua_pushlstring( L, (char*)glob.items[i].head,
+                             glob.items[i].tail - glob.items[i].head );
+            lua_rawset( L, -3 );
+        }
+
+        if( glob.eos ){
+            goto PUSH_GLOB_EOS;
+        }
+    }
+    // push glob eos
+    else if( glob.eos ){
+        lua_createtable( L, 1, 0 );
+
+PUSH_GLOB_EOS:
+        push_udata( L, (lusher_udata_t*)glob.eos->udata );
+        lua_rawseti( L, -2, 1 );
+    }
+    else {
+        lua_pushnil( L );
+    }
+
+    usher_glob_dealloc( &glob );
+
+    return 2;
 }
 
 
