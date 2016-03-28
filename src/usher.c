@@ -44,6 +44,13 @@
 }while(0)
 
 
+#define lstate_int2tbl(L,k,v) do{ \
+    lua_pushstring(L,k); \
+    lua_pushinteger(L,v); \
+    lua_rawset(L,-3); \
+}while(0)
+
+
 #define lstate_ref(L,idx) \
     (lua_pushvalue(L,idx),luaL_ref( L, LUA_REGISTRYINDEX ))
 
@@ -83,6 +90,7 @@ static int set_lua( lua_State *L )
             return 0;
         }
         lua_pushstring( L, usher_strerror( err ) );
+        lua_pushinteger( L, err );
     }
     else if( ( udata = palloc( lusher_udata_t ) ) )
     {
@@ -119,14 +127,16 @@ static int set_lua( lua_State *L )
         
         // got error
         lua_pushstring( L, usher_strerror( err ) );
+        lua_pushinteger( L, err );
         pdealloc( udata );
     }
     // no-mem
     else {
         lua_pushstring( L, strerror( errno ) );
+        lua_pushinteger( L, USHER_ENOMEM );
     }
     
-    return 1;
+    return 2;
 }
 
 
@@ -191,7 +201,8 @@ static int exec_lua( lua_State *L )
         lua_pushnil( L );
         lua_pushnil( L );
         lua_pushstring( L, usher_strerror( err ) );
-        return 3;
+        lua_pushinteger( L, err );
+        return 4;
     }
     // found eos
     else if( err == USHER_OK && glob.seg->type & USHER_SEG_EOS ){
@@ -355,7 +366,15 @@ LUALIB_API int luaopen_usher( lua_State *L )
     lua_newtable( L );
     // add new function
     lstate_fn2tbl( L, "new", alloc_lua );
-    
+    // add status code
+    lstate_int2tbl( L, "OK", USHER_OK );
+    lstate_int2tbl( L, "EINVAL", USHER_EINVAL );
+    lstate_int2tbl( L, "ENOMEM", USHER_ENOMEM );
+    lstate_int2tbl( L, "EFORMAT", USHER_EFORMAT );
+    lstate_int2tbl( L, "ESPLIT", USHER_ESPLIT );
+    lstate_int2tbl( L, "EALREADY", USHER_EALREADY );
+    lstate_int2tbl( L, "ENOENT", USHER_ENOENT );
+
     return 1;
 }
 
